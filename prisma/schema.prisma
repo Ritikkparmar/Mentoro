@@ -34,6 +34,7 @@ model Assessment {
   questions       Json[]    // Array of {question, answer, userAnswer, isCorrect}
   category        String    // "Technical", "Behavioral", etc.
   improvementTip  String?   // AI-generated improvement tip
+  securityViolations Json?  // Security violation data: {isDisqualified, disqualificationReason, violations, etc.}
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

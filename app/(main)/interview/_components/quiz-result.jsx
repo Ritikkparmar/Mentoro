@@ -1,6 +1,6 @@
 "use client";
 
-import { Trophy, CheckCircle2, XCircle } from "lucide-react";
+import { Trophy, CheckCircle2, XCircle, AlertTriangle, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CardContent, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -12,25 +12,71 @@ export default function QuizResult({
 }) {
   if (!result) return null;
 
+  const isDisqualified = result.securityViolations?.isDisqualified || false;
+  const violations = result.securityViolations?.violations || [];
+
   return (
     <div className="mx-auto">
       <h1 className="flex items-center gap-2 text-3xl gradient-title">
-        <Trophy className="h-6 w-6 text-yellow-500" />
-        Quiz Results
+        {isDisqualified ? (
+          <AlertTriangle className="h-6 w-6 text-red-500" />
+        ) : (
+          <Trophy className="h-6 w-6 text-yellow-500" />
+        )}
+        {isDisqualified ? "Quiz Disqualified" : "Quiz Results"}
       </h1>
 
       <CardContent className="space-y-6">
+        {/* Security Violation Alert */}
+        {isDisqualified && (
+          <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+            <div className="flex items-center gap-2 text-destructive font-medium mb-2">
+              <Shield className="h-5 w-5" />
+              <span>Security Violation Detected</span>
+            </div>
+            <p className="text-destructive text-sm mb-3">
+              {result.securityViolations.disqualificationReason}
+            </p>
+            {violations.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Violations:</p>
+                <ul className="text-xs space-y-1">
+                  {violations.map((violation, index) => (
+                    <li key={index} className="flex items-center gap-2">
+                      <span className="text-destructive">•</span>
+                      <span>{violation.message}</span>
+                      <span className="text-muted-foreground">
+                        ({new Date(violation.timestamp).toLocaleTimeString()})
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Score Overview */}
         <div className="text-center space-y-2">
-          <h3 className="text-2xl font-bold">{result.quizScore.toFixed(1)}%</h3>
-          <Progress value={result.quizScore} className="w-full" />
+          <h3 className={`text-2xl font-bold ${isDisqualified ? 'text-destructive' : ''}`}>
+            {result.quizScore.toFixed(1)}%
+            {isDisqualified && <span className="text-sm ml-2">(Zero due to violations)</span>}
+          </h3>
+          <Progress 
+            value={result.quizScore} 
+            className={`w-full ${isDisqualified ? '[&>div]:bg-destructive' : ''}`} 
+          />
         </div>
 
         {/* Improvement Tip */}
         {result.improvementTip && (
-          <div className="bg-muted p-4 rounded-lg">
-            <p className="font-medium">Improvement Tip:</p>
-            <p className="text-muted-foreground">{result.improvementTip}</p>
+          <div className={`p-4 rounded-lg ${isDisqualified ? 'bg-destructive/10 border border-destructive/20' : 'bg-muted'}`}>
+            <p className={`font-medium ${isDisqualified ? 'text-destructive' : ''}`}>
+              {isDisqualified ? 'Security Notice:' : 'Improvement Tip:'}
+            </p>
+            <p className={isDisqualified ? 'text-destructive text-sm' : 'text-muted-foreground'}>
+              {result.improvementTip}
+            </p>
           </div>
         )}
 

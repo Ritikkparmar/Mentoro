@@ -20,7 +20,7 @@ export default function RootLayout({ children }) {
         baseTheme: dark,
       }}
     >
-      <html lang="en" suppressHydrationWarning>
+      <html lang="en" suppressHydrationWarning className="dark">
         {/* <head>
           <link rel="icon" href="/logo-sm.png" sizes="any" />
         </head> */}

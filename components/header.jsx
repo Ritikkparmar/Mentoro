@@ -21,8 +21,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import Image from "next/image";
-
+import { ThemeToggle } from "./theme-toggle";
 export default function HeaderClient() {
+
   return (
     <header className="fixed top-0 w-full border-b bg-background/80 backdrop-blur-md z-50 supports-[backdrop-filter]:bg-background/60">
       <nav className="container mx-auto px-4 h-16 flex items-center justify-between">
@@ -38,6 +39,7 @@ export default function HeaderClient() {
 
         {/* Action Buttons */}
         <div className="flex items-center space-x-2 md:space-x-4">
+          <ThemeToggle />
           <SignedIn>
             <Link href="/dashboard">
               <Button
