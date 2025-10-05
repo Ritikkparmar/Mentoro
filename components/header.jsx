@@ -11,6 +11,7 @@ import {
   StarsIcon,
   Target,
   TargetIcon,
+  Code,
 } from "lucide-react";
 import Link from "next/link";
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
@@ -90,6 +91,12 @@ export default function HeaderClient() {
                   <Link href="/roadmaps" className="flex items-center gap-2">
                     <TargetIcon className="h-4 w-4" />
                     Explore Roadmaps
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/code-review" className="flex items-center gap-2">
+                    <Code className="h-4 w-4" />
+                    Code Reviews
                   </Link>
                 </DropdownMenuItem>
              

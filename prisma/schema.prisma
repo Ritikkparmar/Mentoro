@@ -24,6 +24,7 @@ model User {
   assessments     Assessment[]
   resume          Resume?
   coverLetter     CoverLetter[]
+  codeReviews     CodeReview[]
 }
 
 model Assessment {
@@ -61,6 +62,21 @@ model CoverLetter {
   companyName     String    // Name of the company applying to
   jobTitle        String    // Position applying for
   status          String    @default("draft") // draft, completed
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model CodeReview {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  title           String    // User-provided title for the review
+  language        String    // Programming language
+  code            String    @db.Text // The code being reviewed
+  reviewResult    Json      // AI-generated review analysis
+  overallScore    Float     // Overall code quality score (0-100)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
