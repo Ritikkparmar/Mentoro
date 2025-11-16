@@ -3,9 +3,7 @@
 import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+import { isRateLimited, extractRetryAfterSeconds } from "@/lib/api-quota";
 
 export async function generateQuiz() {
   const { userId } = await auth();
@@ -20,6 +18,13 @@ export async function generateQuiz() {
   });
 
   if (!user) throw new Error("User not found");
+
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("Missing GEMINI_API_KEY in environment");
+  }
+
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const prompt = `
     Generate 10 technical interview questions for a ${
@@ -53,8 +58,92 @@ export async function generateQuiz() {
     return quiz.questions;
   } catch (error) {
     console.error("Error generating quiz:", error);
+    
+    if (isRateLimited(error)) {
+      // Return fallback quiz questions when API is rate limited
+      return generateFallbackQuiz(user.industry, user.skills);
+    }
+    
     throw new Error("Failed to generate quiz questions");
   }
+}
+
+function generateFallbackQuiz(industry, skills) {
+  // Generate basic quiz questions when AI service is unavailable
+  const baseQuestions = [
+    {
+      question: `What is the primary purpose of version control in ${industry} development?`,
+      options: [
+        "To track changes in code over time",
+        "To compile code faster",
+        "To reduce memory usage",
+        "To improve code readability"
+      ],
+      correctAnswer: "To track changes in code over time",
+      explanation: "Version control systems like Git help track changes, collaborate with teams, and maintain code history."
+    },
+    {
+      question: `Which of the following is NOT a best practice in ${industry} development?`,
+      options: [
+        "Writing unit tests",
+        "Using meaningful variable names",
+        "Hardcoding sensitive information",
+        "Following coding standards"
+      ],
+      correctAnswer: "Hardcoding sensitive information",
+      explanation: "Hardcoding sensitive information like passwords or API keys is a security risk and should be avoided."
+    },
+    {
+      question: `What does DRY stand for in software development?`,
+      options: [
+        "Don't Repeat Yourself",
+        "Data Retrieval Yield",
+        "Dynamic Resource Yield",
+        "Database Response Yield"
+      ],
+      correctAnswer: "Don't Repeat Yourself",
+      explanation: "DRY principle encourages avoiding code duplication to improve maintainability."
+    },
+    {
+      question: `Which approach is better for handling errors in ${industry} applications?`,
+      options: [
+        "Silently ignoring errors",
+        "Using try-catch blocks",
+        "Logging errors only",
+        "Throwing all errors to the user"
+      ],
+      correctAnswer: "Using try-catch blocks",
+      explanation: "Try-catch blocks allow proper error handling and graceful degradation."
+    },
+    {
+      question: `What is the main benefit of code documentation?`,
+      options: [
+        "Makes code run faster",
+        "Reduces file size",
+        "Improves code maintainability",
+        "Increases compilation speed"
+      ],
+      correctAnswer: "Improves code maintainability",
+      explanation: "Good documentation helps other developers understand and maintain the code."
+    }
+  ];
+
+  // Add industry-specific questions if skills are available
+  if (skills && skills.length > 0) {
+    baseQuestions.push({
+      question: `Which of these is most important when working with ${skills[0]}?`,
+      options: [
+        "Understanding the underlying concepts",
+        "Memorizing all syntax",
+        "Using the latest version always",
+        "Avoiding documentation"
+      ],
+      correctAnswer: "Understanding the underlying concepts",
+      explanation: "Understanding core concepts is more valuable than memorizing syntax or always using the latest version."
+    });
+  }
+
+  return baseQuestions;
 }
 
 export async function saveQuizResult(questions, answers, score) {

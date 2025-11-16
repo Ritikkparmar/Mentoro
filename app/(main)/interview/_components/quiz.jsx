@@ -3,13 +3,7 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { generateQuiz, saveQuizResult } from "@/actions/interview";
@@ -17,7 +11,7 @@ import QuizResult from "./quiz-result";
 import useFetch from "@/hooks/use-fetch";
 import { BarLoader } from "react-spinners";
 import { useQuizSecurity } from "@/hooks/useQuizSecurity";
-import { Clock, Shield, AlertTriangle } from "lucide-react";
+import { Clock, Shield, AlertTriangle, CheckCircle2, XCircle, Eye, Lock, MousePointerClick } from "lucide-react";
 
 export default function Quiz() {
   const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -25,26 +19,22 @@ export default function Quiz() {
   const [showExplanation, setShowExplanation] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
 
-  // Use security hook with fallback
-  const securityHook = useQuizSecurity();
+  const security = useQuizSecurity();
   const {
-    isQuizActive = false,
-    timeRemaining = 0,
-    tabSwitchCount = 0,
-    warningCount = 0,
-    violations = [],
-    isDisqualified = false,
-    disqualificationReason = '',
-    startQuiz = () => {},
-    endQuiz = () => {},
-    formatTime = (time) => `${Math.floor(time / 60)}:${(time % 60).toString().padStart(2, '0')}`,
-  } = securityHook || {};
+    isQuizActive,
+    timeRemaining,
+    tabSwitchCount,
+    warningCount,
+    violations,
+    isDisqualified,
+    disqualificationReason,
+    startQuiz,
+    endQuiz,
+    formatTime,
+  } = security;
 
-  const {
-    loading: generatingQuiz,
-    fn: generateQuizFn,
-    data: quizData,
-  } = useFetch(generateQuiz);
+  // Fetch quiz
+  const { loading: generatingQuiz, fn: generateQuizFn, data: quizData } = useFetch(generateQuiz);
 
   const {
     loading: savingResult,
@@ -59,12 +49,14 @@ export default function Quiz() {
     }
   }, [quizData]);
 
+  // Handle answer
   const handleAnswer = (answer) => {
     const newAnswers = [...answers];
     newAnswers[currentQuestion] = answer;
     setAnswers(newAnswers);
   };
 
+  // Next question
   const handleNext = () => {
     if (currentQuestion < quizData.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
@@ -74,329 +66,320 @@ export default function Quiz() {
     }
   };
 
+  // Score
   const calculateScore = () => {
     let correct = 0;
-    answers.forEach((answer, index) => {
-      if (answer === quizData[index].correctAnswer) {
-        correct++;
-      }
+    answers.forEach((a, i) => {
+      if (a === quizData[i].correctAnswer) correct++;
     });
     return (correct / quizData.length) * 100;
   };
 
+  // MAIN SAVE FUNCTION
   const finishQuiz = async () => {
-    // If disqualified, set score to 0
     const score = isDisqualified ? 0 : calculateScore();
-    
+
     try {
-      // Pass violation data to save function
       await saveQuizResultFn(quizData, answers, score, {
         isDisqualified,
         disqualificationReason,
         violations,
         tabSwitchCount,
-        warningCount
+        warningCount,
       });
-      
-      if (typeof endQuiz === 'function') {
-        endQuiz(); // End the secure quiz mode
-      }
-      
-      if (isDisqualified) {
-        toast.error("Quiz completed with ZERO score due to security violations!");
-      } else {
-        toast.success("Quiz completed successfully!");
-      }
-    } catch (error) {
-      toast.error(error.message || "Failed to save quiz results");
+
+      if (endQuiz) endQuiz();
+      toast.success(isDisqualified ? "Score set to 0 due to violations!" : "Quiz completed");
+    } catch {
+      toast.error("Failed to save results");
     }
   };
 
-  const startNewQuiz = () => {
-    setCurrentQuestion(0);
-    setAnswers([]);
-    setShowExplanation(false);
-    generateQuizFn();
-    setResultData(null);
-  };
+  // ❗ AUTO-SAVE WHEN DISQUALIFIED
+  useEffect(() => {
+    if (isDisqualified && quizData && answers.length > 0 && !savingResult) {
+      const timer = setTimeout(() => {
+        finishQuiz();
+      }, 2000); // Wait 2 seconds before auto-submit
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isDisqualified]);
+
+  // ⏱ AUTO-SUBMIT WHEN TIME EXPIRES
+  useEffect(() => {
+    if (timeRemaining === 0 && isQuizActive && quizData && !savingResult) {
+      toast.info("Time's up! Submitting your assessment...");
+      const timer = setTimeout(() => {
+        finishQuiz();
+      }, 1500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [timeRemaining, isQuizActive]);
 
   const startSecureQuiz = async () => {
     setIsStarting(true);
     try {
       await generateQuizFn();
-    } catch (error) {
+      setTimeout(() => startQuiz(30), 1200);
+    } catch {
       toast.error("Failed to generate quiz");
       setIsStarting(false);
     }
   };
 
-  // Auto-start secure mode when quiz data is loaded (optional)
-  useEffect(() => {
-    if (quizData && !isQuizActive && !isStarting) {
-      // Start secure mode after a short delay
-      const timer = setTimeout(() => {
-        try {
-          if (typeof startQuiz === 'function') {
-            console.log("Auto-starting security mode...");
-            startQuiz(30); // 30 minutes timer
-          }
-        } catch (error) {
-          console.log("Security mode failed to start, continuing with quiz");
-        }
-      }, 2000); // Increased delay to 2 seconds
-      return () => clearTimeout(timer);
-    }
-  }, [quizData, isQuizActive, isStarting, startQuiz]);
-
-  if (generatingQuiz) {
-    return <BarLoader className="mt-4" width={"100%"} color="gray" />;
-  }
-
-  // Don't block quiz display for isStarting - let security mode start in background
-  if (isStarting) {
-    console.log("Quiz is starting, but showing questions anyway");
-  }
-
-  // Show disqualification screen if user is disqualified
-  if (isDisqualified) {
+  // UI BELOW
+  if (generatingQuiz || savingResult) {
     return (
-      <Card className="mx-2">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-destructive">
-            <AlertTriangle className="h-6 w-6" />
-            Quiz Disqualified - Security Violation
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-            <p className="font-medium text-destructive mb-2">Reason for Disqualification:</p>
-            <p className="text-destructive">{disqualificationReason}</p>
-          </div>
-          
-          <div className="p-4 bg-muted rounded-lg">
-            <p className="font-medium mb-2">Security Violations Detected:</p>
-            <ul className="space-y-1 text-sm">
-              {violations.map((violation, index) => (
-                <li key={index} className="flex items-center gap-2">
-                  <span className="text-destructive">•</span>
-                  <span>{violation.message}</span>
-                  <span className="text-muted-foreground text-xs">
-                    ({new Date(violation.timestamp).toLocaleTimeString()})
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          
-          <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-            <p className="font-medium text-yellow-600 mb-2">⚠️ Penalty Applied:</p>
-            <p className="text-yellow-600">Your quiz score has been set to ZERO due to security violations.</p>
-          </div>
-        </CardContent>
-        <CardFooter>
-          <Button onClick={finishQuiz} className="w-full" variant="destructive">
-            Submit Quiz with Zero Score
-          </Button>
-        </CardFooter>
-      </Card>
-    );
-  }
-
-  // Show results if quiz is completed
-  if (resultData) {
-    return (
-      <div className="mx-2">
-        <QuizResult result={resultData} onStartNew={startNewQuiz} />
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <BarLoader width={200} color="#3b82f6" />
+        <p className="text-muted-foreground">
+          {generatingQuiz ? "Generating your secure assessment..." : "Submitting your answers..."}
+        </p>
       </div>
     );
   }
 
+  if (resultData)
+    return (
+      <div className="mx-2">
+        <QuizResult result={resultData} onStartNew={() => location.reload()} />
+      </div>
+    );
+
   if (!quizData) {
     return (
-      <Card className="mx-2">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-6 w-6 text-green-600" />
-            Ready to test your knowledge?
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-muted-foreground">
-            This quiz contains 10 questions specific to your industry and
-            skills. Take your time and choose the best answer for each question.
-          </p>
-          
-          {/* Security Features Info */}
-          <div className="bg-muted/50 p-4 rounded-lg space-y-3">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <Shield className="h-4 w-4 text-green-600" />
-              Secure Quiz Mode Features:
+      <Card className="mx-2 max-w-3xl mx-auto border-2">
+        <CardHeader className="space-y-3 pb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-blue-500/10 rounded-lg">
+              <Shield className="w-7 h-7 text-blue-600" />
             </div>
-            <ul className="text-sm text-muted-foreground space-y-1 ml-6">
-              <li>• Fullscreen mode will be activated</li>
-              <li>• Tab switching detection and warnings</li>
-              <li>• Right-click and shortcuts will be disabled</li>
-              <li>• 30-minute timer with auto-submit</li>
-              <li>• Auto-submit after 2 tab switches</li>
-            </ul>
+            <div>
+              <CardTitle className="text-2xl font-bold">Secure Assessment Mode</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                This assessment runs in proctored mode with advanced security monitoring to ensure fair evaluation.
+              </p>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-5">
+          {/* Security Features */}
+          <div className="space-y-3">
+            <h3 className="font-semibold flex items-center gap-2 text-base">
+              <Lock className="w-4 h-4" />
+              Active Security Measures
+            </h3>
+            <div className="space-y-2">
+              <div className="flex items-start gap-3 p-3 bg-background border rounded-lg">
+                <Eye className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="font-medium">Tab Switch Detection</p>
+                  <p className="text-sm text-muted-foreground">Switching tabs or minimizing the window will be tracked</p>
+                </div>
+              </div>
+              
+              <div className="flex items-start gap-3 p-3 bg-background border rounded-lg">
+                <MousePointerClick className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="font-medium">Right-Click Protection</p>
+                  <p className="text-sm text-muted-foreground">Context menu and copy operations are disabled</p>
+                </div>
+              </div>
+              
+              <div className="flex items-start gap-3 p-3 bg-background border rounded-lg">
+                <Lock className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="font-medium">Keyboard Shortcuts Blocked</p>
+                  <p className="text-sm text-muted-foreground">Developer tools and inspect shortcuts are disabled</p>
+                </div>
+              </div>
+              
+              <div className="flex items-start gap-3 p-3 bg-background border rounded-lg">
+                <Clock className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="font-medium">Timed Assessment</p>
+                  <p className="text-sm text-muted-foreground">Auto-submit when time expires</p>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-            <AlertTriangle className="h-4 w-4 text-yellow-600" />
-            <span className="text-sm text-yellow-600 font-medium">
-              Important: Once started, you cannot leave the quiz until completion or time expires.
-            </span>
+          {/* Violation Policy */}
+          <div className="space-y-3">
+            <h3 className="font-semibold flex items-center gap-2 text-base">
+              <AlertTriangle className="w-4 h-4" />
+              Three-Strike Violation Policy
+            </h3>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 p-3 rounded-lg border-2 border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20">
+                <div className="w-8 h-8 rounded-full bg-yellow-500 text-white flex items-center justify-center font-bold">1</div>
+                <p className="font-medium text-yellow-800 dark:text-yellow-300">First Warning - Continue with caution</p>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg border-2 border-orange-300 bg-orange-50 dark:bg-orange-950/20">
+                <div className="w-8 h-8 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold">2</div>
+                <p className="font-medium text-orange-800 dark:text-orange-300">Second Warning - Final chance</p>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg border-2 border-red-300 bg-red-50 dark:bg-red-950/20">
+                <div className="w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center font-bold">3</div>
+                <p className="font-medium text-red-800 dark:text-red-300">Automatic Disqualification - Score set to 0</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Important Notes */}
+          <div className="bg-blue-50 dark:bg-blue-950/30 border-2 border-blue-200 dark:border-blue-800 rounded-lg p-4 space-y-2">
+            <h3 className="font-semibold flex items-center gap-2 text-blue-900 dark:text-blue-300">
+              <CheckCircle2 className="w-4 h-4" />
+              Before You Begin
+            </h3>
+            <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1.5 ml-6 list-disc">
+              <li>Ensure you have a stable internet connection</li>
+              <li>Close all unnecessary tabs and applications</li>
+              <li>Find a quiet environment without distractions</li>
+              <li>Do not refresh or navigate away from this page</li>
+              <li>Assessment will automatically enter fullscreen mode</li>
+            </ul>
           </div>
         </CardContent>
-        <CardFooter>
-          <div className="space-y-2 w-full">
-            <Button onClick={startSecureQuiz} className="w-full" disabled={isStarting}>
-              {isStarting ? "Generating Quiz..." : "Start Secure Quiz"}
-            </Button>
-            {quizData && !isQuizActive && (
-              <Button
-                onClick={() => startQuiz(30)}
-                variant="outline"
-                className="w-full"
-              >
-                Activate Security Mode
-              </Button>
+
+        <CardFooter className="flex flex-col gap-3 pt-6">
+          <Button 
+            onClick={startSecureQuiz} 
+            disabled={isStarting} 
+            className="w-full h-12 text-base font-semibold"
+            size="lg"
+          >
+            {isStarting ? (
+              <>
+                <BarLoader color="white" width={100} height={2} />
+                <span className="ml-2">Initializing Secure Mode...</span>
+              </>
+            ) : (
+              <>
+                <Shield className="w-5 h-5 mr-2" />
+                Start Secure Assessment
+              </>
             )}
-          </div>
+          </Button>
+          <p className="text-xs text-center text-muted-foreground">
+            By starting, you agree to follow all security protocols
+          </p>
         </CardFooter>
       </Card>
     );
   }
 
-
-  // Show quiz questions if we have quiz data, regardless of security mode
-  if (!quizData) {
-    console.log("No quiz data available");
-    return null;
-  }
-
-  console.log("Quiz data available:", quizData.length, "questions");
-  console.log("Is quiz active:", isQuizActive);
-  console.log("Current question index:", currentQuestion);
-
   const question = quizData[currentQuestion];
-  console.log("Current question:", question);
 
   return (
-    <Card className="mx-2">
+    <Card className="mx-2 max-w-3xl mx-auto">
       <CardHeader>
-        {/* Security Status Banner */}
         {isQuizActive && (
-          <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
-            <div className="flex items-center gap-2 text-green-600 font-medium">
-              <Shield className="h-5 w-5" />
-              <span>Security Mode Active - Any violations will result in disqualification</span>
+          <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-green-700" />
+              <span className="text-sm font-medium text-green-700">Secure Mode Active</span>
+            </div>
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <span>Violations: {warningCount}/3</span>
             </div>
           </div>
         )}
-        
-        <div className="flex items-center justify-between">
-          <CardTitle>
+
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-xl">
             Question {currentQuestion + 1} of {quizData.length}
           </CardTitle>
-          <div className="flex items-center gap-4">
-            {isQuizActive && timeRemaining && (
-              <div className="flex items-center gap-2 text-sm">
-                <Clock className="h-4 w-4" />
-                <span className="font-mono font-bold">
-                  {formatTime(timeRemaining)}
-                </span>
-              </div>
-            )}
-            {isQuizActive && (
-              <div className="flex items-center gap-2 text-sm text-green-600">
-                <Shield className="h-4 w-4" />
-                <span>Secure Mode</span>
-              </div>
-            )}
-          </div>
+
+          {isQuizActive && (
+            <div className="flex items-center gap-2 bg-muted px-3 py-2 rounded-lg">
+              <Clock className="h-4 w-4 text-blue-600" />
+              <span className="font-mono font-semibold">{formatTime(timeRemaining)}</span>
+            </div>
+          )}
         </div>
-        
-        {/* Security Warnings */}
-        {isQuizActive && violations.length > 0 && (
-          <div className="space-y-2 mt-2">
-            {violations.map((violation, index) => (
-              <div key={index} className="flex items-center gap-2 p-2 bg-destructive/10 border border-destructive/20 rounded-lg">
-                <AlertTriangle className="h-4 w-4 text-destructive" />
-                <span className="text-sm text-destructive font-medium">
-                  {violation.message}
-                </span>
-                <span className="text-xs text-muted-foreground ml-auto">
-                  {new Date(violation.timestamp).toLocaleTimeString()}
-                </span>
-              </div>
-            ))}
+
+        {warningCount > 0 && !isDisqualified && (
+          <div className={`mt-3 p-3 rounded-lg flex items-center gap-2 ${
+            warningCount === 1 ? 'bg-yellow-500/20 text-yellow-700 border border-yellow-500/30' :
+            warningCount === 2 ? 'bg-orange-500/20 text-orange-700 border border-orange-500/30' :
+            'bg-red-500/20 text-red-700 border border-red-500/30'
+          }`}>
+            <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+            <div>
+              <p className="font-semibold">Warning {warningCount}/3</p>
+              <p className="text-sm">
+                {warningCount === 1 && "First warning - Please stay focused on the assessment"}
+                {warningCount === 2 && "Second warning - One more violation will result in disqualification"}
+              </p>
+            </div>
           </div>
         )}
 
-        {isQuizActive && warningCount > 0 && !isDisqualified && (
-          <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg mt-2">
-            <AlertTriangle className="h-4 w-4 text-yellow-600" />
-            <span className="text-sm text-yellow-600 font-medium">
-              ⚠️ WARNING: {warningCount}/2 violations - Next violation will result in disqualification!
-            </span>
+        {isDisqualified && (
+          <div className="mt-3 p-4 rounded-lg bg-red-500/10 border-2 border-red-500/50 flex items-start gap-3">
+            <XCircle className="h-6 w-6 flex-shrink-0 mt-0.5 text-red-600" />
+            <div className="flex-1">
+              <p className="font-bold text-lg text-red-700">Assessment Disqualified</p>
+              <p className="text-sm mt-1 text-red-600">{disqualificationReason}</p>
+              <p className="text-sm mt-2 text-red-600">
+                Your score has been set to 0. The assessment will be submitted automatically in a few seconds...
+              </p>
+            </div>
+          </div>
+        )}
+
+        {timeRemaining === 0 && isQuizActive && !isDisqualified && (
+          <div className="mt-3 p-4 rounded-lg bg-orange-500/10 border-2 border-orange-500/50 flex items-start gap-3">
+            <Clock className="h-6 w-6 flex-shrink-0 mt-0.5 text-orange-600" />
+            <div className="flex-1">
+              <p className="font-bold text-lg text-orange-700">Time Expired</p>
+              <p className="text-sm mt-1 text-orange-600">
+                Your assessment is being submitted automatically...
+              </p>
+            </div>
           </div>
         )}
       </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-lg font-medium">{question.question}</p>
-        <RadioGroup
-          onValueChange={handleAnswer}
-          value={answers[currentQuestion]}
-          className="space-y-2"
+
+      <CardContent className="space-y-6">
+        <div className="bg-muted/30 p-4 rounded-lg">
+          <p className="text-lg font-medium leading-relaxed">{question.question}</p>
+        </div>
+
+        <RadioGroup 
+          value={answers[currentQuestion]} 
+          onValueChange={handleAnswer} 
+          className="space-y-3"
+          disabled={isDisqualified}
         >
-          {question.options.map((option, index) => (
-            <div key={index} className="flex items-center space-x-2">
-              <RadioGroupItem value={option} id={`option-${index}`} />
-              <Label htmlFor={`option-${index}`}>{option}</Label>
+          {question.options.map((opt, i) => (
+            <div 
+              key={i} 
+              className="flex items-center space-x-3 p-4 border-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+            >
+              <RadioGroupItem id={`opt-${i}`} value={opt} />
+              <Label htmlFor={`opt-${i}`} className="cursor-pointer flex-1 text-base">
+                {opt}
+              </Label>
             </div>
           ))}
         </RadioGroup>
-
-        {showExplanation && (
-          <div className="mt-4 p-4 bg-muted rounded-lg">
-            <p className="font-medium">Explanation:</p>
-            <p className="text-muted-foreground">{question.explanation}</p>
-          </div>
-        )}
       </CardContent>
-      <CardFooter className="flex justify-between">
-        <div className="flex gap-2">
-          {!showExplanation && (
-            <Button
-              onClick={() => setShowExplanation(true)}
-              variant="outline"
-              disabled={!answers[currentQuestion]}
-            >
-              Show Explanation
-            </Button>
-          )}
-          {isQuizActive && (
-            <Button
-              onClick={endQuiz}
-              variant="destructive"
-              size="sm"
-            >
-              Emergency Exit
-            </Button>
-          )}
+
+      <CardFooter className="flex justify-between items-center pt-6 border-t">
+        <div className="text-sm text-muted-foreground">
+          {answers.filter(a => a !== null).length} of {quizData.length} answered
         </div>
-        <Button
-          onClick={handleNext}
-          disabled={!answers[currentQuestion] || savingResult}
-          className="ml-auto"
+        <Button 
+          onClick={handleNext} 
+          disabled={!answers[currentQuestion] || isDisqualified || savingResult || timeRemaining === 0}
+          size="lg"
         >
-          {savingResult && (
-            <BarLoader className="mt-4" width={"100%"} color="gray" />
-          )}
-          {currentQuestion < quizData.length - 1
-            ? "Next Question"
-            : "Finish Quiz"}
+          {savingResult ? "Submitting..." : currentQuestion === quizData.length - 1 ? "Submit Assessment" : "Next Question"}
         </Button>
       </CardFooter>
     </Card>

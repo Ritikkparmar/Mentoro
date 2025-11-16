@@ -9,6 +9,7 @@ const ErrorAnalysis = () => {
   const [errorText, setErrorText] = useState("");
   const [errorData, setErrorData] = useState(null);
   const [stackOverflowArticles, setStackOverflowArticles] = useState([]);
+  const [stackOverflowAnswers, setStackOverflowAnswers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -37,7 +38,7 @@ const ErrorAnalysis = () => {
 
     try {
       const response = await axios.post(
-        "/api/ai/get-explanation-error",
+        "/api/ai/get-error-analysis",
         { input: errorText }
       );
 
@@ -49,7 +50,8 @@ const ErrorAnalysis = () => {
         setStackOverflowArticles([]);
       } else {
         setErrorData(response.data.explanation);
-        setStackOverflowArticles(response.data.stackOverflowResult.slice(0, 5));
+        setStackOverflowArticles((response.data.stackOverflowResult || []).slice(0, 5));
+        setStackOverflowAnswers(response.data.stackOverflowAnswers || []);
       }
     } catch (error) {
       setErrorMessage(
@@ -64,10 +66,10 @@ const ErrorAnalysis = () => {
   };
 
   useEffect(() => {
-    if (errorData || stackOverflowArticles.length > 0) {
+    if (errorData || stackOverflowArticles.length > 0 || stackOverflowAnswers.length > 0) {
       handleScroll();
     }
-  }, [errorData, stackOverflowArticles]);
+  }, [errorData, stackOverflowArticles, stackOverflowAnswers]);
   return (
     <>
       <div className="max-w-5xl mx-auto text-white  bg-[#1e1e1e] max-h-[70vh] overflow-auto  p-4">
@@ -102,10 +104,11 @@ const ErrorAnalysis = () => {
         )}
       </button>
 
-      {!errorMessage && (errorData || stackOverflowArticles.length > 0) && (
+      {!errorMessage && (errorData || stackOverflowArticles.length > 0 || stackOverflowAnswers.length > 0) && (
         <ErrorOutput
           errorData={errorData}
           stackOverflowArticles={stackOverflowArticles}
+          stackOverflowAnswers={stackOverflowAnswers}
         />
       )}
     </>

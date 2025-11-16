@@ -1,34 +1,47 @@
 import { NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+import { getReview } from "@/actions/code-review";
+import { isRateLimited, extractRetryAfterSeconds, createFallbackResponse } from "@/lib/api-quota";
 
 export async function POST(request) {
   try {
-    const body = await request.json();
-    const input = (body?.input || "").toString();
+    const body = await request.json().catch(() => null);
 
-    if (!input.trim()) {
+    if (!body || (typeof body === "object" && typeof body.input !== "string")) {
       return NextResponse.json(
-        { error: "Input code is required" },
+        { error: "Invalid request. Send { input: string, mode?: string }" },
         { status: 400 }
       );
     }
 
-    const prompt = `You are an expert AI Code Reviewer. Review the following code and return a concise markdown report. Identify syntax errors, logic issues, poor practices, and vulnerabilities (like XSS/SQLi). Provide exact fixes or code snippets. End with a short summary and an overall score out of 100.\n\nCode:\n\n${input}`;
-
-    const result = await model.generateContent(prompt);
-    const review = result.response.text().trim();
-
-    return NextResponse.json({ review });
+    const payload = typeof body === "string" ? { input: body } : body;
+    
+    try {
+      const result = await getReview(payload);
+      return NextResponse.json(result);
+    } catch (err) {
+      if (isRateLimited(err)) {
+        const retryAfter = extractRetryAfterSeconds(err);
+        const fallbackResponse = createFallbackResponse('review', payload.input);
+        const headers = new Headers();
+        headers.set("Retry-After", String(retryAfter));
+        return new NextResponse(
+          JSON.stringify({ 
+            review: fallbackResponse.review,
+            warning: fallbackResponse.warning,
+            retryAfterSeconds: retryAfter 
+          }),
+          { status: 200, headers }
+        );
+      }
+      console.error("get-review route error:", err);
+      const message = err?.message || "Internal Server Error";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
   } catch (error) {
-    console.error("get-review error:", error);
+    console.error("get-review route error:", error);
     return NextResponse.json(
-      { error: "Failed to generate review" },
+      { error: error?.message || "Failed to generate review" },
       { status: 500 }
     );
   }
 }
-
-

@@ -40,7 +40,8 @@ const roleLinks = {
 
 export default function Page() {
   const handleRoleClick = (role) => {
-    window.location.replace(roleLinks[role]);
+    // Open PDF in new tab, stay on roadmap page
+    window.open(roleLinks[role], '_blank', 'noopener,noreferrer');
   };
 
   return (

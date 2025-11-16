@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Button } from "./ui/button";
+
 import {
   PenBox,
   LayoutDashboard,
@@ -12,6 +13,8 @@ import {
   Target,
   TargetIcon,
   Code,
+  Robot,
+  Cpu,
 } from "lucide-react";
 import Link from "next/link";
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
@@ -40,7 +43,7 @@ export default function HeaderClient() {
 
         {/* Action Buttons */}
         <div className="flex items-center space-x-2 md:space-x-4">
-          <ThemeToggle />
+          {/* <ThemeToggle /> */}
           <SignedIn>
             <Link href="/dashboard">
               <Button
@@ -97,6 +100,12 @@ export default function HeaderClient() {
                   <Link href="/code-review" className="flex items-center gap-2">
                     <Code className="h-4 w-4" />
                     Code Reviews
+                  </Link>
+                </DropdownMenuItem>
+                 <DropdownMenuItem asChild>
+                  <Link href="/HireMind" className="flex items-center gap-2">
+                    <Cpu className="h-4 w-4" />
+                    HireMind Bot
                   </Link>
                 </DropdownMenuItem>
              

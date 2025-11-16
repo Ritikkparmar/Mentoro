@@ -4,9 +4,7 @@ import { db } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { revalidatePath } from "next/cache";
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+import { isRateLimited, extractRetryAfterSeconds } from "@/lib/api-quota";
 
 export async function saveResume(content) {
   const { userId } = await auth();
@@ -70,6 +68,13 @@ export async function improveWithAI({ current, type }) {
 
   if (!user) throw new Error("User not found");
 
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("Missing GEMINI_API_KEY in environment");
+  }
+
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
   const prompt = `
     As an expert resume writer, improve the following ${type} description for a ${user.industry} professional.
     Make it more impactful, quantifiable, and aligned with industry standards.
@@ -93,6 +98,20 @@ export async function improveWithAI({ current, type }) {
     return improvedContent;
   } catch (error) {
     console.error("Error improving content:", error);
+    
+    if (isRateLimited(error)) {
+      // Return fallback improvement when API is rate limited
+      return generateFallbackImprovement(current, type, user.industry);
+    }
+    
     throw new Error("Failed to improve content");
   }
+}
+
+function generateFallbackImprovement(current, type, industry) {
+  // Basic improvement when AI service is unavailable
+  const actionVerbs = ['Developed', 'Implemented', 'Led', 'Managed', 'Created', 'Optimized', 'Designed', 'Built'];
+  const randomVerb = actionVerbs[Math.floor(Math.random() * actionVerbs.length)];
+  
+  return `${randomVerb} ${current.toLowerCase()} using industry best practices and modern ${industry} technologies, resulting in improved efficiency and measurable outcomes.`;
 }

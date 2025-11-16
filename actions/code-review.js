@@ -1,190 +1,160 @@
-"use server";
+// ...existing code...
+const STACK_EXCHANGE_KEY = process.env.STACK_EXCHANGE_API;
 
-import { db } from "@/lib/prisma";
-import { auth } from "@clerk/nextjs/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { revalidatePath } from "next/cache";
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); // use latest stable model
-
-// Utility to safely parse JSON from Gemini
-function safeJSONParse(text) {
+// Dynamic import for CommonJS gemini service
+async function getGeminiService() {
   try {
-    const cleaned = text.replace(/```(?:json)?\n?/g, "").replace(/```$/, "").trim();
-    return JSON.parse(cleaned);
+    // Use relative path to avoid issues with parentheses in path
+    const geminiModule = await import("../app/(main)/services/gemini.js");
+    // Handle CommonJS default export
+    const service = geminiModule.default || geminiModule;
+    if (typeof service !== "function") {
+      throw new Error("Gemini service is not a function");
+    }
+    return service;
   } catch (error) {
-    console.error("❌ JSON parse failed:", error.message);
-    return null;
+    console.error("Failed to load gemini service:", error);
+    // Try with absolute path alias as fallback
+    try {
+      const geminiModule = await import("@/app/(main)/services/gemini.js");
+      const service = geminiModule.default || geminiModule;
+      if (typeof service === "function") {
+        return service;
+      }
+    } catch (fallbackError) {
+      console.error("Fallback import also failed:", fallbackError);
+    }
+    throw new Error(`Cannot load Gemini service: ${error.message}`);
   }
 }
 
-export async function reviewCode({ title, language, code }) {
+/**
+ * Normalize input and call gemini service.
+ * Returns an object the API route can serialize.
+ */
+// ...existing code...
+
+
+export async function getReview(payload) {
   try {
-    const { userId } = await auth();
-    if (!userId) throw new Error("Unauthorized");
+    // Accept either a string or an object { input, mode }
+    const input =
+      typeof payload === "string"
+        ? payload
+        : (payload?.input ?? payload?.text ?? "");
 
-    const user = await db.user.findUnique({ where: { clerkUserId: userId } });
-    if (!user) throw new Error("User not found");
+    const mode = payload?.mode ?? "review";
 
-    const prompt = `
-      You are an expert AI Code Reviewer integrated into a web app called Mentoro.
-      Review this ${language} code and return structured feedback in pure JSON.
-
-      Code:
-      ${code}
-
-      Instructions:
-      - Identify issues, explain clearly, and suggest fixes.
-      - Provide an overall summary with a quality score (0–100).
-      - Return ONLY valid JSON.
-      Format:
-      {
-        "issues": [
-          {
-            "type": "error|warning|suggestion",
-            "severity": "high|medium|low",
-            "title": "string",
-            "description": "string",
-            "line": number or null,
-            "suggestion": "string",
-            "category": "syntax|logic|security|performance|style|best-practice"
-          }
-        ],
-        "summary": {
-          "overallScore": number,
-          "readability": "excellent|good|fair|poor",
-          "performance": "excellent|good|fair|poor",
-          "maintainability": "excellent|good|fair|poor",
-          "security": "excellent|good|fair|poor",
-          "strengths": ["string"],
-          "improvements": ["string"]
-        }
-      }
-    `;
-
-    // Generate review from Gemini
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-
-    const reviewResult = safeJSONParse(text);
-    if (!reviewResult) {
-      console.error("⚠️ Invalid Gemini output:", text);
-      throw new Error("AI returned invalid JSON. Please retry.");
+    if (!input || typeof input !== "string" || input.trim() === "") {
+      throw new Error("Invalid input for getReview");
     }
 
-    // Save to database
-    const codeReview = await db.codeReview.create({
-      data: {
-        userId: user.id,
-        title,
-        language,
-        code,
-        reviewResult,
-        overallScore: reviewResult.summary?.overallScore ?? 0,
-      },
-    });
+    // Call gemini with requested mode (review | simple | technical | error | quick | deep)
+    let gemini;
+    try {
+      gemini = await getGeminiService();
+    } catch (importError) {
+      console.error("Failed to import gemini service:", importError);
+      throw new Error("Gemini service unavailable");
+    }
 
-    revalidatePath("/code-review");
-    return codeReview;
+    if (!gemini || typeof gemini !== "function") {
+      console.error("Gemini service is not a function:", typeof gemini);
+      throw new Error("Gemini service initialization failed");
+    }
 
+    const response = await gemini(input, mode);
+
+    // Return normalized response for the client
+    return { review: response, input, mode };
   } catch (error) {
-    console.error("❌ reviewCode error:", error);
-    return { error: error.message || "Failed to review code" };
+    console.error("Error in getReview:", error);
+    throw error;
+  }
+}
+// ...existing code...
+
+export async function getExplanationSimple(payload) {
+  try {
+    const input =
+      typeof payload === "string" ? payload : payload?.input ?? "";
+
+    if (!input || typeof input !== "string" || input.trim() === "") {
+      throw new Error("Invalid input for getExplanationSimple");
+    }
+
+    const gemini = await getGeminiService();
+    const response = await gemini(input, "simple");
+    return { explanationSimple: response };
+  } catch (error) {
+    console.error("Error in getExplanationSimple:", error);
+    throw error;
   }
 }
 
-// Fetch user code reviews
-export async function getCodeReviews() {
+export async function getExplanationTechnical(payload) {
   try {
-    const { userId } = await auth();
-    if (!userId) throw new Error("Unauthorized");
+    const input =
+      typeof payload === "string" ? payload : payload?.input ?? "";
 
-    const user = await db.user.findUnique({ where: { clerkUserId: userId } });
-    if (!user) throw new Error("User not found");
+    if (!input || typeof input !== "string" || input.trim() === "") {
+      throw new Error("Invalid input for getExplanationTechnical");
+    }
 
-    const codeReviews = await db.codeReview.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-    });
-
-    return codeReviews;
+    const gemini = await getGeminiService();
+    const response = await gemini(input, "technical");
+    return { explanationTechnical: response };
   } catch (error) {
-    console.error("❌ getCodeReviews error:", error);
-    return { error: "Failed to fetch code reviews" };
+    console.error("Error in getExplanationTechnical:", error);
+    throw error;
   }
 }
 
-export async function getCodeReview(id) {
+export async function getExplanationError(payload) {
   try {
-    const { userId } = await auth();
-    if (!userId) throw new Error("Unauthorized");
+    const input =
+      typeof payload === "string" ? payload : payload?.input ?? "";
 
-    const user = await db.user.findUnique({ where: { clerkUserId: userId } });
-    if (!user) throw new Error("User not found");
+    if (!input || typeof input !== "string" || input.trim() === "") {
+      throw new Error("Invalid input for getExplanationError");
+    }
 
-    const review = await db.codeReview.findUnique({
-      where: { id, userId: user.id },
-    });
+    const gemini = await getGeminiService();
+    const geminiResponse = await gemini(input, "error");
 
-    if (!review) throw new Error("Code review not found");
+    // Clean fenced JSON if present
+    const geminiResponseStr = String(geminiResponse)
+      .replace(/^```json\s*/, "")
+      .replace(/```\s*$/, "");
 
-    return review;
-  } catch (error) {
-    console.error("❌ getCodeReview error:", error);
-    return { error: "Failed to fetch code review" };
-  }
-}
+    let parsedResponse;
+    try {
+      parsedResponse = JSON.parse(geminiResponseStr);
+      if (!parsedResponse || !parsedResponse.error_type) {
+        throw new Error("Invalid error format from Gemini");
+      }
+    } catch (jsonError) {
+      throw new Error(
+        "Invalid or unrecognized error format. Please enter a valid error message."
+      );
+    }
 
-export async function deleteCodeReview(id) {
-  try {
-    const { userId } = await auth();
-    if (!userId) throw new Error("Unauthorized");
+    const searchQuery = parsedResponse.summary_title || input;
+    const stackOverflowResponse = await fetch(
+      `https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&q=${encodeURIComponent(
+        searchQuery
+      )}&accepted=true&site=stackoverflow&key=${STACK_EXCHANGE_KEY}`
+    );
 
-    const user = await db.user.findUnique({ where: { clerkUserId: userId } });
-    if (!user) throw new Error("User not found");
-
-    await db.codeReview.delete({ where: { id, userId: user.id } });
-
-    revalidatePath("/code-review");
-    return { success: true };
-  } catch (error) {
-    console.error("❌ deleteCodeReview error:", error);
-    return { error: "Failed to delete code review" };
-  }
-}
-
-export async function getCodeReviewStats() {
-  try {
-    const { userId } = await auth();
-    if (!userId) throw new Error("Unauthorized");
-
-    const user = await db.user.findUnique({ where: { clerkUserId: userId } });
-    if (!user) throw new Error("User not found");
-
-    const reviews = await db.codeReview.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-    });
-
-    const total = reviews.length;
-    const average = total
-      ? reviews.reduce((sum, r) => sum + (r.overallScore || 0), 0) / total
-      : 0;
-
-    const languageStats = reviews.reduce((acc, r) => {
-      acc[r.language] = (acc[r.language] || 0) + 1;
-      return acc;
-    }, {});
+    const stackOverflowData = await stackOverflowResponse.json();
 
     return {
-      totalReviews: total,
-      averageScore: Math.round(average * 10) / 10,
-      languageStats,
-      recentReviews: reviews.slice(0, 5),
+      explanation: parsedResponse,
+      stackOverflowResult: stackOverflowData.items ?? [],
     };
   } catch (error) {
-    console.error("❌ getCodeReviewStats error:", error);
-    return { error: "Failed to fetch stats" };
+    console.error("Error in getExplanationError:", error);
+    throw error;
   }
 }
+// ...existing code...

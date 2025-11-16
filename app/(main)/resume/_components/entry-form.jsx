@@ -1,317 +1,265 @@
-// app/resume/_components/entry-form.jsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { format, parse } from "date-fns";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { entrySchema } from "@/app/lib/schema";
-import { Sparkles, PlusCircle, X, Pencil, Save, Loader2 } from "lucide-react";
-import { improveWithAI } from "@/actions/resume";
-import { toast } from "sonner";
-import useFetch from "@/hooks/use-fetch";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Plus, Trash2, Edit2, Save, X } from "lucide-react";
 
-const formatDisplayDate = (dateString) => {
-  if (!dateString) return "";
-  const date = parse(dateString, "yyyy-MM", new Date());
-  return format(date, "MMM yyyy");
-};
-
-export function EntryForm({ type, entries, onChange }) {
-  const [isAdding, setIsAdding] = useState(false);
+export function EntryForm({ type, entries = [], onChange }) {
   const [editingIndex, setEditingIndex] = useState(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const [formData, setFormData] = useState({
+    title: "",
+    organization: "",
+    location: "",
+    startDate: "",
+    endDate: "",
+    description: "",
+  });
 
-  const {
-    register,
-    handleSubmit: handleValidation,
-    formState: { errors },
-    reset,
-    watch,
-    setValue,
-  } = useForm({
-    resolver: zodResolver(entrySchema),
-    defaultValues: {
+  const handleInputChange = (field, value) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const resetForm = () => {
+    setFormData({
       title: "",
       organization: "",
+      location: "",
       startDate: "",
       endDate: "",
       description: "",
-      current: false,
-    },
-  });
-
-  const current = watch("current");
-
-  const handleAdd = handleValidation((data) => {
-    const formattedEntry = {
-      ...data,
-      startDate: formatDisplayDate(data.startDate),
-      endDate: data.current ? "" : formatDisplayDate(data.endDate),
-    };
-
-    if (editingIndex !== null) {
-      const newEntries = [...entries];
-      newEntries[editingIndex] = formattedEntry;
-      onChange(newEntries);
-      setEditingIndex(null);
-    } else {
-      onChange([...entries, formattedEntry]);
-    }
-
-    reset();
-    setIsAdding(false);
-  });
-
-  const handleEdit = (index) => {
-    const editEntry = entries[index];
-    const startDate = parse(editEntry.startDate, "MMM yyyy", new Date());
-    const endDate = editEntry.endDate
-      ? parse(editEntry.endDate, "MMM yyyy", new Date())
-      : "";
-
-    reset({
-      ...editEntry,
-      startDate: format(startDate, "yyyy-MM"),
-      endDate: endDate ? format(endDate, "yyyy-MM") : "",
     });
-    setEditingIndex(index);
-    setIsAdding(true);
+    setEditingIndex(null);
+    setIsAdding(false);
   };
 
-  const handleDelete = (index) => {
-    const newEntries = entries.filter((_, i) => i !== index);
-    onChange(newEntries);
-  };
-
-  const {
-    loading: isImproving,
-    fn: improveWithAIFn,
-    data: improvedContent,
-    error: improveError,
-  } = useFetch(improveWithAI);
-
-  // Add this effect to handle the improvement result
-  useEffect(() => {
-    if (improvedContent && !isImproving) {
-      setValue("description", improvedContent);
-      toast.success("Description improved successfully!");
-    }
-    if (improveError) {
-      toast.error(improveError.message || "Failed to improve description");
-    }
-  }, [improvedContent, improveError, isImproving, setValue]);
-
-  // Replace handleImproveDescription with this
-  const handleImproveDescription = async () => {
-    const description = watch("description");
-    if (!description) {
-      toast.error("Please enter a description first");
+  const handleAdd = () => {
+    if (!formData.title.trim()) {
       return;
     }
 
-    await improveWithAIFn({
-      current: description,
-      type: type.toLowerCase(), // 'experience', 'education', or 'project'
+    const newEntry = {
+      id: Date.now().toString(),
+      ...formData,
+    };
+
+    onChange([...(entries || []), newEntry]);
+    resetForm();
+  };
+
+  const handleEdit = (index) => {
+    const entry = entries[index];
+    setFormData({
+      title: entry.title || "",
+      organization: entry.organization || "",
+      location: entry.location || "",
+      startDate: entry.startDate || "",
+      endDate: entry.endDate || "",
+      description: entry.description || "",
     });
+    setEditingIndex(index);
+    setIsAdding(false);
+  };
+
+  const handleUpdate = () => {
+    if (!formData.title.trim()) {
+      return;
+    }
+
+    const updatedEntries = [...(entries || [])];
+    updatedEntries[editingIndex] = {
+      ...updatedEntries[editingIndex],
+      ...formData,
+    };
+
+    onChange(updatedEntries);
+    resetForm();
+  };
+
+  const handleDelete = (index) => {
+    const updatedEntries = (entries || []).filter((_, i) => i !== index);
+    onChange(updatedEntries);
+  };
+
+  const getFieldLabel = (field) => {
+    const labels = {
+      Experience: {
+        title: "Job Title",
+        organization: "Company",
+        location: "Location",
+      },
+      Education: {
+        title: "Degree",
+        organization: "Institution",
+        location: "Location",
+      },
+      Project: {
+        title: "Project Name",
+        organization: "Organization/Client",
+        location: "Location",
+      },
+    };
+    return labels[type]?.[field] || field;
   };
 
   return (
     <div className="space-y-4">
-      <div className="space-y-4">
-        {entries.map((item, index) => (
-          <Card key={index}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                {item.title} @ {item.organization}
-              </CardTitle>
-              <div className="flex space-x-2">
-                <Button
-                  variant="outline"
-                  type="button"
-                  size="icon"
-                  onClick={() => handleEdit(index)}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  type="button"
-                  onClick={() => handleDelete(index)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                {item.current
-                  ? `${item.startDate} - Present`
-                  : `${item.startDate} - ${item.endDate}`}
-              </p>
-              <p className="mt-2 text-sm whitespace-pre-wrap">
-                {item.description}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {/* Existing Entries */}
+      {entries && entries.length > 0 && (
+        <div className="space-y-3">
+          {entries.map((entry, index) => (
+            <Card key={entry.id || index}>
+              <CardHeader className="pb-3">
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <CardTitle className="text-lg">{entry.title}</CardTitle>
+                    {entry.organization && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {entry.organization}
+                        {entry.location && ` • ${entry.location}`}
+                      </p>
+                    )}
+                    {(entry.startDate || entry.endDate) && (
+                      <p className="text-sm text-muted-foreground">
+                        {entry.startDate} {entry.endDate && `- ${entry.endDate}`}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleEdit(index)}
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(index)}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              {entry.description && (
+                <CardContent className="pt-0">
+                  <p className="text-sm whitespace-pre-line">{entry.description}</p>
+                </CardContent>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
 
-      {isAdding && (
-        <Card>
+      {/* Add/Edit Form */}
+      {(isAdding || editingIndex !== null) && (
+        <Card className="border-2 border-primary">
           <CardHeader>
-            <CardTitle>
-              {editingIndex !== null ? "Edit" : "Add"} {type}
+            <CardTitle className="text-lg">
+              {editingIndex !== null ? `Edit ${type}` : `Add ${type}`}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  {getFieldLabel("title")} *
+                </label>
                 <Input
-                  placeholder="Title/Position"
-                  {...register("title")}
-                  error={errors.title}
+                  value={formData.title}
+                  onChange={(e) => handleInputChange("title", e.target.value)}
+                  placeholder={`Enter ${getFieldLabel("title").toLowerCase()}`}
                 />
-                {errors.title && (
-                  <p className="text-sm text-red-500">{errors.title.message}</p>
-                )}
               </div>
               <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  {getFieldLabel("organization")}
+                </label>
                 <Input
-                  placeholder="Organization/Company"
-                  {...register("organization")}
-                  error={errors.organization}
-                />
-                {errors.organization && (
-                  <p className="text-sm text-red-500">
-                    {errors.organization.message}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Input
-                  type="month"
-                  {...register("startDate")}
-                  error={errors.startDate}
-                />
-                {errors.startDate && (
-                  <p className="text-sm text-red-500">
-                    {errors.startDate.message}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Input
-                  type="month"
-                  {...register("endDate")}
-                  disabled={current}
-                  error={errors.endDate}
-                />
-                {errors.endDate && (
-                  <p className="text-sm text-red-500">
-                    {errors.endDate.message}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                id="current"
-                {...register("current")}
-                onChange={(e) => {
-                  setValue("current", e.target.checked);
-                  if (e.target.checked) {
-                    setValue("endDate", "");
+                  value={formData.organization}
+                  onChange={(e) =>
+                    handleInputChange("organization", e.target.value)
                   }
-                }}
-              />
-              <label htmlFor="current">Current {type}</label>
+                  placeholder={`Enter ${getFieldLabel("organization").toLowerCase()}`}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Location</label>
+                <Input
+                  value={formData.location}
+                  onChange={(e) => handleInputChange("location", e.target.value)}
+                  placeholder="Enter location"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Start Date</label>
+                <Input
+                  value={formData.startDate}
+                  onChange={(e) => handleInputChange("startDate", e.target.value)}
+                  placeholder="e.g., Jan 2020"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">End Date</label>
+                <Input
+                  value={formData.endDate}
+                  onChange={(e) => handleInputChange("endDate", e.target.value)}
+                  placeholder="e.g., Dec 2022 or Present"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
+              <label className="text-sm font-medium">Description</label>
               <Textarea
-                placeholder={`Description of your ${type.toLowerCase()}`}
+                value={formData.description}
+                onChange={(e) => handleInputChange("description", e.target.value)}
+                placeholder="Describe your responsibilities, achievements, or key points..."
                 className="h-32"
-                {...register("description")}
-                error={errors.description}
               />
-              {errors.description && (
-                <p className="text-sm text-red-500">
-                  {errors.description.message}
-                </p>
-              )}
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleImproveDescription}
-              disabled={isImproving || !watch("description")}
-            >
-              {isImproving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Improving...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Improve with AI
-                </>
-              )}
-            </Button>
+
+            <div className="flex gap-2 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={resetForm}
+              >
+                <X className="h-4 w-4 mr-2" />
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={editingIndex !== null ? handleUpdate : handleAdd}
+                disabled={!formData.title.trim()}
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {editingIndex !== null ? "Update" : "Add"}
+              </Button>
+            </div>
           </CardContent>
-          <CardFooter className="flex justify-end space-x-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                reset();
-                setIsAdding(false);
-                setEditingIndex(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="button" onClick={handleAdd}>
-              {editingIndex !== null ? (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Changes
-                </>
-              ) : (
-                <>
-                  <PlusCircle className="h-4 w-4 mr-2" />
-                  Add Entry
-                </>
-              )}
-            </Button>
-          </CardFooter>
         </Card>
       )}
 
-      {!isAdding && (
+      {/* Add New Button */}
+      {!isAdding && editingIndex === null && (
         <Button
-          className="w-full"
+          type="button"
           variant="outline"
+          className="w-full"
           onClick={() => setIsAdding(true)}
         >
-          <PlusCircle className="h-4 w-4 mr-2" />
+          <Plus className="h-4 w-4 mr-2" />
           Add {type}
         </Button>
       )}

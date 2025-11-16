@@ -17,7 +17,7 @@ const ActionButtons = ({ onReview, onExplain, loading, error }) => {
       >
         {loading.reviewLoading ? "🔍 Analyzing..." : "Review"}
       </button>
-      <button
+      {/* <button
         disabled={loading.explainationLoading}
         onClick={onExplain}
         className={` ${
@@ -25,7 +25,7 @@ const ActionButtons = ({ onReview, onExplain, loading, error }) => {
         } text-white flex-1 border-l border-gray-600 cursor-pointer disabled:cursor-not-allowe hover:bg-neutral-950`}
       >
         {loading.explainationLoading ? "🔍 Analyzing..." : "Explain"}
-      </button>
+      </button> */}
     </div>
   );
 };
