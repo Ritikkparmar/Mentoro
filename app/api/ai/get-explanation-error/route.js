@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { getExplanationError } from "@/app/actions/codereview";
-import { validateInput } from "@/middleware/validateInput";
+import { getExplanationError } from "@/actions/code-review";
+// import { validateInput } from "@/middleware/validateInput";
 
 export async function POST(request) {
   try {
     const body = await request.json();
-    const error = validateInput(body);
+    // const error = validateInput(body);
     if (error) {
       return NextResponse.json({ error }, { status: 400 });
     }
