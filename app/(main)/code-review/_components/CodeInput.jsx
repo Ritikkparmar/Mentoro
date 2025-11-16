@@ -4,8 +4,7 @@ import Editor from "@monaco-editor/react";
 import { FaCode } from "react-icons/fa";
 import { MdOutlineFormatSize, MdWrapText } from "react-icons/md";
 import { VscSymbolColor } from "react-icons/vsc";
-import { SiCodefactor } from "react-icons/si/index";
-
+import { SiCodefactor } from "react-icons/si";
 
 const themes = ["vs-dark", "light"];
 const languages = [
